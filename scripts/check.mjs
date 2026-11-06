@@ -1,115 +1,172 @@
 #!/usr/bin/env node
-// @ts-check
-/**
- * Checks the library's items as a pull request must pass them (CONTRIBUTING.md): each folder `<category>/<name>/`
- * with an item.json of schema/item.schema.json's shape, under CC0 with its source said, its files listed and in their
- * sizes, its pages loading nothing from the network. Says every problem it finds, and exits 1 when there is one.
- *
- *   node scripts/check.mjs                    every item
- *   node scripts/check.mjs sound/rain …       those
- */
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { createHash } from 'node:crypto';
+import { lstatSync, readFileSync, readdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const CATS = ['sound', 'music', 'transition', 'effect', 'filter', 'sticker', 'text', 'template'];
-const LANGS = ['en', 'zh-CN', 'ja', 'ko', 'es'];
-const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const MB = 1024 * 1024;
-/** The most a file may be, by category and kind of file; a template's own files together. */
-const MAX = { sound: 2 * MB, music: 8 * MB, preview: 2 * MB, file: 2 * MB, template: 20 * MB };
-/** The AI tools whose outputs are accepted (CONTRIBUTING.md): a source's `tool` starts with one of these. */
-const AI_TOOLS = ['ElevenLabs'];
-/** What a page may not do: load from the network, or run what it did not bring. */
-const UNSAFE = [
-  [/\b(?:https?:)?\/\/(?!www\.w3\.org\/)[a-z0-9.-]+\.[a-z]{2,}/i, 'loads from the network'],
-  [/\b(?:eval|Function)\s*\(/, 'runs code it makes'],
-  [/\bimport\s*\(/, 'imports code at run time'],
-  [/\b(?:fetch|XMLHttpRequest|WebSocket|EventSource)\b/, 'talks to the network'],
-];
+export const ROOT = fileURLToPath(new URL('../', import.meta.url));
+export const CATEGORIES = ['sound', 'music', 'transition', 'effect'];
+export const LANGUAGES = ['en', 'zh-CN', 'ja', 'ko', 'es'];
+export const HEX = /^[a-f0-9]{64}$/;
+export const MB = 1024 * 1024;
+const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const ITEM_KEYS = ['cat', 'name', 'about', 'tags', 'by', 'license', 'source', 'version', 'files', 'main', 'durationMs'];
+export const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
+export const text = (value) => Buffer.from(JSON.stringify(value) + '\n');
 
-/** The items asked for, else every one: `<category>/<name>`. */
-function itemsAsked() {
-  const asked = process.argv.slice(2).map((a) => a.replace(/\/+$/, ''));
-  if (asked.length) return asked;
-  return CATS.filter((c) => existsSync(join(ROOT, c))).flatMap((c) => readdirSync(join(ROOT, c), { withFileTypes: true })
-    .filter((d) => d.isDirectory()).map((d) => `${c}/${d.name}`));
+function requireThat(ok, message) { if (!ok) throw new Error(message); }
+const record = (value) => value && typeof value === 'object' && !Array.isArray(value);
+const exact = (value, keys) => record(value) && Object.keys(value).length === keys.length && keys.every((key) => Object.hasOwn(value, key));
+const cleanText = (value, min, max) => typeof value === 'string' && value.trim().length >= min && value.length <= max;
+const https = (value) => {
+  try { const url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password; }
+  catch { return false; }
+};
+
+function fileAt(path, max) {
+  const info = lstatSync(path);
+  requireThat(info.isFile() && info.size > 0 && info.size <= max, 'expected a regular file within the size limit');
+  return readFileSync(path);
 }
 
-/** What is wrong with one item: a sentence each. @param {string} id */
-export function problemsOf(id) {
-  const problems = [];
-  const say = (/** @type {string} */ text) => problems.push(text);
-  const [cat, name, ...more] = id.split('/');
-  if (!CATS.includes(cat) || !name || more.length) return [`${id}: an item is a folder <category>/<name>, the category one of ${CATS.join(', ')}`];
-  if (!NAME.test(name)) say('its folder\'s name: lowercase letters, digits and single hyphens');
-  const dir = join(ROOT, cat, name);
-  /** @type {any} */
-  let item;
-  try { item = JSON.parse(readFileSync(join(dir, 'item.json'), 'utf8')); } catch (e) {
-    return [...problems, `item.json is missing or is not JSON (${/** @type {Error} */ (e).message})`].map((p) => `${id}: ${p}`);
-  }
-  const known = ['cat', 'name', 'about', 'tags', 'group', 'by', 'license', 'source', 'version', 'files', 'main', 'uses', 'durationMs', 'place', 'energy', 'bpm', 'loop'];
-  for (const k of Object.keys(item)) if (!known.includes(k)) say(`item.json has ${k}, which is not part of an item`);
-  if (item.cat !== cat) say(`cat is ${JSON.stringify(item.cat)}, not the folder's ${cat}`);
-  for (const lang of LANGS) {
-    const n = item.name?.[lang];
-    if (typeof n !== 'string' || !n.trim() || n.length > 60) say(`name.${lang}: a name of 1 to 60 characters`);
-  }
-  if (typeof item.about !== 'string' || item.about.length < 10 || item.about.length > 300) say('about: one or two sentences in English, 10 to 300 characters');
-  if (!Array.isArray(item.tags) || !item.tags.length || item.tags.length > 12 || !item.tags.every((t) => typeof t === 'string' && /^[a-z0-9-]+$/.test(t))) {
-    say('tags: 1 to 12, each lowercase letters, digits and hyphens');
-  }
-  if (item.license !== 'CC0-1.0') say('license: CC0-1.0, the only license the library takes');
-  const s = item.source;
-  if (s?.kind === 'own') { if (Object.keys(s).length !== 1) say('source: { "kind": "own" } and nothing else'); }
-  else if (s?.kind === 'ai') {
-    if (typeof s.tool !== 'string' || !AI_TOOLS.some((t) => s.tool.startsWith(t))) say(`source.tool: one of the AI tools accepted (${AI_TOOLS.join(', ')}); see CONTRIBUTING.md`);
-    if (typeof s.plan !== 'string' || !s.plan.trim() || /\bfree\b/i.test(s.plan)) say('source.plan: the paid plan it was made on');
-  } else if (s?.kind === 'cc0') {
-    if (typeof s.url !== 'string' || !s.url.startsWith('https://')) say('source.url: the https address it was published at under CC0');
-  } else say('source: { "kind": "own" }, { "kind": "ai", "tool", "plan" } or { "kind": "cc0", "url" }');
-  if (!Number.isInteger(item.version) || item.version < 1) say('version: a whole number from 1');
-
-  /* its files: each listed, here in the folder or kept by its sha256, in its size */
-  const files = Array.isArray(item.files) ? item.files : [];
-  if (!files.length) say('files: what it is made of');
-  const here = readdirSync(dir).filter((f) => f !== 'item.json' && !f.startsWith('.'));
-  let own = 0;
-  for (const f of files) {
-    if (typeof f?.path !== 'string' || !/^[a-z0-9][a-z0-9._-]*$/.test(f.path)) { say(`files: ${JSON.stringify(f?.path)} is not a file's name`); continue; }
-    if (!Number.isInteger(f.bytes) || f.bytes < 1) { say(`files: ${f.path} needs its size in bytes`); continue; }
-    if (f.sha256 !== undefined) {
-      if (!/^[0-9a-f]{64}$/.test(f.sha256)) say(`files: ${f.path}'s sha256 is 64 hexadecimal digits`);
-      if (here.includes(f.path)) say(`files: ${f.path} is kept by its sha256, so it is not in the folder`);
-    } else if (!here.includes(f.path)) say(`files: ${f.path} is not in the folder (a large file is listed with its sha256)`);
-    else if (statSync(join(dir, f.path)).size !== f.bytes) say(`files: ${f.path} is ${statSync(join(dir, f.path)).size} bytes, not ${f.bytes}`);
-    own += f.bytes;
-    const audio = /\.(m4a|mp3)$/.test(f.path);
-    const most = f.path === 'preview.mp4' ? MAX.preview : audio && (cat === 'sound' || cat === 'music') ? MAX[cat] : cat === 'template' ? MAX.template : MAX.file;
-    if (f.bytes > most) say(`files: ${f.path} is ${(f.bytes / MB).toFixed(1)} MB; at most ${most / MB} MB`);
-  }
-  for (const f of here) if (!files.some((x) => x?.path === f)) say(`${f} is in the folder but not in files`);
-  if (cat === 'template' && own > MAX.template) say(`its own files are ${(own / MB).toFixed(1)} MB together; at most ${MAX.template / MB} MB`);
-  if (item.main !== undefined && !files.some((f) => f?.path === item.main)) say(`main: ${item.main} is not one of its files`);
-  for (const u of item.uses ?? []) if (typeof u !== 'string' || !existsSync(join(ROOT, u, 'item.json'))) say(`uses: ${u} is not an item of the library`);
-  for (const [k, lo, hi] of /** @type {[string, number, number][]} */ ([['energy', 1, 5], ['bpm', 30, 300], ['durationMs', 1, 3_600_000]])) {
-    if (item[k] !== undefined && !(Number.isInteger(item[k]) && item[k] >= lo && item[k] <= hi)) say(`${k}: a whole number from ${lo} to ${hi}`);
-  }
-
-  /* its pages: nothing from the network, nothing run that it did not bring */
-  for (const f of here.filter((p) => /\.(html|css|js|mjs|svg)$/.test(p))) {
-    const text = readFileSync(join(dir, f), 'utf8');
-    for (const [pattern, what] of UNSAFE) if (pattern.test(text)) say(`${f} ${what}: a page plays in a sandbox, with only what it brings`);
-  }
-  return problems.map((p) => `${id}: ${p}`);
+export function probe(bytes, options = []) {
+  return JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-protocol_whitelist', 'pipe', ...options, '-show_streams', '-show_format', '-of', 'json', '-i', 'pipe:0'], {
+    input: bytes, timeout: 15_000, maxBuffer: MB, stdio: ['pipe', 'pipe', 'pipe'],
+  }));
 }
 
-if (process.argv[1] && relative(process.argv[1], fileURLToPath(import.meta.url)) === '') {
-  const ids = itemsAsked();
-  const problems = ids.flatMap(problemsOf);
-  for (const p of problems) console.error(p);
-  console.log(problems.length ? `${problems.length} problem(s) in ${ids.length} item(s)` : `${ids.length} item(s), all as they should be`);
-  process.exitCode = problems.length ? 1 : 0;
+function audioIsValid(bytes, main) {
+  const { streams, format } = probe(bytes);
+  const codec = main.endsWith('.m4a') ? 'aac' : 'mp3';
+  const container = main.endsWith('.m4a') ? 'm4a' : 'mp3';
+  requireThat(format.format_name?.split(',').includes(container) && streams.length === 1 && streams[0].codec_type === 'audio' &&
+    streams[0].codec_name === codec, 'main must contain a single AAC or MP3 audio stream');
+}
+
+function pictureIsValid(bytes, file, codec) {
+  const { streams, format } = probe(bytes);
+  const stream = streams[0];
+  requireThat(streams.length === 1 && stream.codec_type === 'video' && stream.codec_name === codec && stream.width <= 1920 &&
+    stream.height <= 1080 && stream.width > 0 && stream.height > 0 &&
+    (codec !== 'h264' || format.format_name?.split(',').includes('mp4')), `${file}: expected a single ${codec} picture stream up to 1920×1080`);
+}
+
+function durationOf(path) {
+  const result = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-protocol_whitelist', 'file', '-show_entries', 'format=duration', '-of', 'json', path], {
+    timeout: 15_000, stdio: ['ignore', 'pipe', 'pipe'],
+  }));
+  return Number(result.format?.duration);
+}
+
+function cssIsValid(bytes) {
+  const css = bytes.toString('utf8');
+  const body = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  requireThat(body.trim() && /^[\x09\x0a\x0d\x20-\x7e]+$/.test(body) &&
+    !/[<\\]/.test(css) && !/@(?!keyframes\s)/i.test(body) &&
+    !/\b(?:url|(?:-webkit-)?image-set|image|src|paint|element)\s*\(/i.test(body),
+  'overlay.css must be local CSS with no external resources or HTML');
+}
+
+export function idsIn(root = ROOT) {
+  return CATEGORIES.flatMap((cat) => {
+    let entries;
+    try { entries = readdirSync(join(root, cat), { withFileTypes: true }); }
+    catch (error) { if (error.code === 'ENOENT') return []; throw error; }
+    return entries.map((entry) => {
+      requireThat(entry.isDirectory(), `${cat}/${entry.name}: expected an item directory`);
+      return `${cat}/${entry.name}`;
+    });
+  }).sort();
+}
+
+export function inspect(id, { root = ROOT, mediaDir, allowMissing = false } = {}) {
+  const [cat, slug, extra] = id.split('/');
+  requireThat(CATEGORIES.includes(cat) && SLUG.test(slug ?? '') && id.length < 100 && extra === undefined, 'expected <category>/<slug>');
+  const dir = join(root, cat, slug);
+  requireThat(lstatSync(join(root, cat)).isDirectory() && lstatSync(dir).isDirectory(), 'item must be a real directory');
+  const metadata = fileAt(join(dir, 'item.json'), 32 * 1024);
+  const item = JSON.parse(metadata);
+  requireThat(exact(item, ITEM_KEYS) && item.cat === cat, 'invalid item.json fields or category');
+  requireThat(exact(item.name, LANGUAGES) && LANGUAGES.every((lang) => cleanText(item.name[lang], 1, 60)), 'a name in all five languages is required');
+  requireThat(cleanText(item.about, 10, 300), 'about must be 10–300 characters');
+  requireThat(Array.isArray(item.tags) && item.tags.length > 0 && item.tags.length <= 12 &&
+    item.tags.every((tag) => typeof tag === 'string' && tag.length <= 40 && SLUG.test(tag)) &&
+    new Set(item.tags).size === item.tags.length, 'tags must be 1–12 unique lowercase slugs');
+  requireThat(typeof item.by === 'string' && /^[a-zA-Z0-9-]{1,39}$/.test(item.by), 'by must be the contributor’s GitHub login');
+  requireThat(item.license === 'CC0-1.0', 'CC0-1.0 is required');
+  const source = item.source;
+  requireThat((exact(source, ['kind']) && source.kind === 'own') ||
+    (exact(source, ['kind', 'url']) && source.kind === 'cc0' && https(source.url)), 'provide an original work or its public CC0 source URL');
+  requireThat(Number.isSafeInteger(item.version) && item.version >= 1, 'version must be a positive integer');
+  requireThat(Number.isInteger(item.durationMs) && item.durationMs >= 1 && item.durationMs <= 3_600_000, 'invalid durationMs');
+  const audio = cat === 'sound' || cat === 'music';
+  const allowed = audio ? [item.main] : ['overlay.css', 'poster.jpg', 'preview.mp4'];
+  requireThat(audio ? typeof item.main === 'string' && /^(sound|music)\.(m4a|mp3)$/.test(item.main) && item.main.startsWith(cat + '.')
+    : item.main === 'overlay.css' && item.durationMs <= 10_000, 'invalid main file or overlay duration');
+  requireThat(Array.isArray(item.files) && item.files.length === allowed.length &&
+    new Set(item.files.map((file) => file?.path)).size === allowed.length, 'missing, duplicate or unexpected files');
+  const allowedLocal = new Set(['item.json']);
+  const inputs = new Map();
+  const missing = [];
+  for (const file of item.files) {
+    const external = file?.sha256 !== undefined;
+    requireThat(exact(file, external ? ['path', 'bytes', 'sha256'] : ['path', 'bytes']) && allowed.includes(file.path), 'invalid file entry');
+    requireThat(!external || (audio && typeof file.sha256 === 'string' && HEX.test(file.sha256)), 'only audio can use an external SHA-256');
+    const limit = file.path.endsWith('.css') ? 32 * 1024 : cat === 'music' ? 8 * MB : 2 * MB;
+    requireThat(Number.isInteger(file.bytes) && file.bytes > 0 && file.bytes <= limit, `${file.path}: invalid size`);
+    if (!external) allowedLocal.add(file.path);
+    let path;
+    if (external) {
+      if (mediaDir) path = join(mediaDir, file.sha256);
+      if (!path && allowMissing) { missing.push(file.sha256); continue; }
+      requireThat(path, `${file.path}: stage the attachment with --media-dir before publishing`);
+    } else path = join(dir, file.path);
+    const bytes = fileAt(path, limit);
+    const sha = hash(bytes);
+    requireThat(file.bytes === bytes.length && (!external || file.sha256 === sha), `${file.path}: size or SHA-256 mismatch`);
+    inputs.set(file.path, bytes);
+    if (audio) {
+      audioIsValid(bytes, item.main);
+      requireThat(Math.abs(durationOf(path) * 1000 - item.durationMs) <= 150, 'declared audio duration differs from the file');
+    } else if (file.path === 'overlay.css') cssIsValid(bytes);
+    else if (file.path === 'poster.jpg') pictureIsValid(bytes, file.path, 'mjpeg');
+    else {
+      pictureIsValid(bytes, file.path, 'h264');
+      const length = durationOf(path);
+      requireThat(Number.isFinite(length) && length > 0 && length <= 10, 'preview must be at most 10 seconds');
+    }
+  }
+  for (const filename of readdirSync(dir)) requireThat(allowedLocal.has(filename), `unexpected file: ${filename}`);
+  // Metadata already contains the digest of external files, so it identifies the reviewed content in both review modes.
+  const fingerprint = hash(text([hash(metadata), ...item.files.map((file) => file.sha256 ?? hash(inputs.get(file.path)))]));
+  return { id, slug, item, inputs, fingerprint, missing };
+}
+
+export function reviewed({ root = ROOT, mediaDir } = {}) {
+  const approvals = JSON.parse(fileAt(join(root, 'approvals.json'), MB));
+  requireThat(record(approvals), 'approvals.json must be an object');
+  const ids = idsIn(root);
+  requireThat(Object.keys(approvals).every((id) => ids.includes(id)), 'remove approvals for withdrawn items');
+  return ids.map((id) => {
+    const entry = inspect(id, { root, mediaDir });
+    const approval = approvals[id];
+    requireThat(exact(approval, ['fingerprint', 'evidence']) && approval.fingerprint === entry.fingerprint &&
+      cleanText(approval.evidence, 12, 2000), `${id}: maintainer approval must record matching fingerprint and provenance evidence`);
+    return entry;
+  });
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const args = process.argv.slice(2);
+  const at = args.indexOf('--media-dir');
+  const mediaDir = at < 0 ? undefined : args.splice(at, 2)[1];
+  const strict = args.includes('--approved');
+  const ids = args.filter((arg) => arg !== '--approved');
+  try {
+    if (at >= 0 && !mediaDir) throw new Error('--media-dir needs a directory');
+    const items = strict ? reviewed({ mediaDir }) : (ids.length ? ids : idsIn()).map((id) => inspect(id, { mediaDir, allowMissing: true }));
+    for (const { id, fingerprint, missing } of items) console.log(`${id} ${fingerprint}${missing.length ? ' (attachment pending maintainer verification)' : ''}`);
+    console.log(`${items.length} item(s) checked`);
+  } catch (error) { console.error(error.message); process.exitCode = 1; }
 }
