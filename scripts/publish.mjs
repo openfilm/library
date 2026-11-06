@@ -21,7 +21,8 @@ function request(method, name, { bytes, type, match, create } = {}) {
     const body = join(dir, 'body');
     const headers = join(dir, 'headers');
     const config = `user = "${key}:${secret}"\n`;
-    const args = ['--config', '-', '--aws-sigv4', 'aws:amz:auto:s3', '--silent', '--max-time', '90', '--max-filesize', String(8 * MB),
+    const args = ['--config', '-', '--aws-sigv4', 'aws:amz:auto:s3', '--silent', '--max-time', '90',
+      '--retry', '3', '--retry-delay', '1', '--retry-max-time', '15', '--retry-all-errors', '--max-filesize', String(8 * MB),
       '--dump-header', headers, '--output', body, '--write-out', '%{http_code}', '--request', method];
     if (bytes) {
       const file = join(dir, 'upload');
@@ -56,10 +57,11 @@ function active() {
 function activate(catalog, current) {
   const result = request('PUT', 'catalog.json', { bytes: catalog, type: 'application/json',
     match: current.etag, create: current.status === 404 });
-  if (result.status === 412) throw new Error('The catalog changed during publication. Re-run against the new head.');
-  if (![200, 201, 204].includes(result.status)) throw new Error(`Switching the catalog failed (HTTP ${result.status})`);
+  if (![200, 201, 204, 412].includes(result.status)) throw new Error(`Switching the catalog failed (HTTP ${result.status})`);
   const live = request('GET', 'catalog.json');
-  if (live.status !== 200 || !live.bytes.equals(catalog)) throw new Error('Active catalog differs after publication');
+  if (live.status === 200 && live.bytes.equals(catalog)) return;
+  if (result.status === 412) throw new Error('The catalog changed during publication. Re-run against the new head.');
+  throw new Error('Active catalog differs after publication');
 }
 
 function verifySnapshot(catalog) {
