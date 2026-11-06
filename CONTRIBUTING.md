@@ -1,55 +1,23 @@
 # Contributing to the OpenFilm Library
 
-Thank you for adding to the library. Every item here must be usable by anyone in any film, commercial or not, with
-no credit and no payment. That is the one rule, and everything below follows from it.
+## Rights and attribution
 
-## What can be added
+Submit work you can dedicate under [CC0 1.0](LICENSE), or a work already published under CC0 whose source you can document. State the source in `item.json`. Use `{"kind":"own"}` for original work and `{"kind":"cc0","url":"https://…"}` for an existing CC0 work. A maintainer checks the evidence before release.
 
-- **Released under CC0 1.0.** `"license": "CC0-1.0"` in `item.json`, for code as well as media. No other license is
-  accepted, including licenses that ask for credit (CC BY) or forbid resale ("free for commercial use" stock sites).
-- **With its source said** (`"source"` in `item.json`):
-  - `{ "kind": "own" }`: you recorded, filmed, drew, composed or wrote it yourself.
-  - `{ "kind": "ai", "tool": "<tool and model>", "plan": "<your plan>" }`: you made it with an AI tool whose terms
-    give you, on that plan, ownership of the output and the right to use it commercially. The tools accepted are
-    listed below; outputs of free plans are not accepted.
-  - `{ "kind": "cc0", "url": "<where it was published>" }`: someone else's work, published under CC0 1.0 at that
-    address. The check keeps a copy of that page as it was.
-- **Nothing of anyone else's inside it**: no samples, melodies, lyrics, logos, trademarks, recognizable faces or
-  voices of real people, or footage of private places, unless they are yours or under CC0 themselves.
-- **Not registered anywhere**: no item may be registered with YouTube Content ID or any similar system, by you or
-  anyone. A registered item would claim the films of everyone who used it.
+For this launch, submissions from generative services are outside the accepted sources. Keep third-party samples, music, trademarks and identifiable people out of your submission unless you can document all relevant permissions. Keep the asset out of Content ID and similar claiming systems.
 
-### AI tools accepted
+## Prepare an item
 
-The list is kept by the maintainers from each tool's current terms. Ask in an issue to add one.
+Make one folder `<category>/<slug>/` with an [item.json](schema/item.schema.json). Give it a name in English, Simplified Chinese, Japanese, Korean and Spanish, a short description, searchable tags, your GitHub login and the actual length in milliseconds. Start at version 1 and raise the version when changing an approved item.
 
-| Tool | Plans accepted |
-| --- | --- |
-| ElevenLabs (sound effects, music) | paid plans |
+- **Sounds and music.** One `sound.m4a`, `sound.mp3`, `music.m4a` or `music.mp3`, with a single AAC or MP3 stream. Sounds can be up to 2 MiB and music up to 8 MiB. Listen for clipping and trim unintended silence. Studio generates the waveform at publication.
+- **Transitions and effects.** `overlay.css` styles the generated page's `<div class="l"></div>`. The page may use local CSS and `@keyframes`; HTML, JavaScript, remote resources and imports are excluded. Add a JPEG poster and a silent H.264 MP4 preview of up to ten seconds and 2 MiB. See [Glitch](transition/glitch/overlay.css) for the overlay pattern. A transition plays over a cut.
+- Open a [proposal issue](https://github.com/openfilm/library/issues/new) for other asset types.
 
-## What it must be
+## Submit and follow the review
 
-- One folder per item, `<category>/<name>/`, with an `item.json` that follows [schema/item.schema.json](schema/item.schema.json):
-  a name in English, Simplified Chinese, Japanese, Korean and Spanish, a sentence about it, tags.
-- Sizes: a sound at most 2 MB, a music track at most 8 MB, a preview at most 2 MB and 10 seconds, a template's own
-  files at most 20 MB (what it `uses` from the library does not count).
-- Audio in M4A (AAC) or MP3, loudness about −16 LUFS, no silence at either end.
-- Pages (transitions, effects, text, templates) are HTML, CSS and JavaScript that load nothing from the network and
-  run nothing they did not bring: they play in a sandbox.
+1. Put a small file in its item folder and record the filename and byte count. To submit audio separately, run `node scripts/prepare.mjs sound.m4a` (or the matching audio filename) and paste its output into `files`. Attach a ZIP containing the one audio file to the PR or link an attachment the reviewer can download. The maintainer stages the audio under its SHA-256 and verifies its content before approving it.
+2. Run `node scripts/check.mjs <category>/<slug>` with Node.js 22+ and FFmpeg installed. CI checks files in the PR. An external attachment requires the separate maintainer check.
+3. Open a pull request with the source and evidence. A maintainer checks the asset and adds its reviewed fingerprint. Publication follows in a separately verified release. See [the release procedure](MAINTAINERS.md).
 
-`node scripts/check.mjs <category>/<name>` checks all of this before you open a pull request; the same check runs on it.
-
-## How
-
-1. Add your folder. Large files (sound, music, footage) are uploaded with `openfilm library upload <file>`, which
-   prints the `sha256` and `bytes` to list in `files`; small ones (text, code, stills, previews) go in the folder.
-2. Run the check.
-3. Open a pull request and tick the statements in its template.
-
-A maintainer reviews what the check cannot see: that it is fit for films, named and tagged well, and yours to give.
-Once merged, it reaches every OpenFilm within minutes.
-
-## Taking something down
-
-If you believe an item here is yours and was added without your consent, open an issue with the item's id. It is
-taken out of the library while it is looked into; films already made with it are not affected.
+For a rights claim, send the item ID, the source and your basis for the claim to **legal@openfilm.dev**. Please use email for personal details or private evidence.

@@ -1,7 +1,8 @@
-<!-- What you are adding or changing, in a sentence or two. -->
+<!-- Item ID, summary, and how to preview it. Link any separate audio attachment. -->
 
-- [ ] I made this myself, or with an AI tool on a paid plan that gives me the rights to its output, or it is someone else's work published under CC0 1.0 (its address is in `source`).
-- [ ] I release it under CC0 1.0: anyone may use it in any film, commercial or not, change it and share it, without crediting me.
-- [ ] There is nothing of anyone else's inside it: no samples, melodies, lyrics, logos, recognizable faces or voices.
-- [ ] It is not registered with YouTube Content ID or any similar system, and I will not register it.
-- [ ] `node scripts/check.mjs` passes.
+- [ ] I made the asset myself or verified its original CC0 publication. I have provided the source and supporting evidence.
+- [ ] I dedicate my contribution under CC0 1.0.
+- [ ] I have cleared third-party material and kept the item out of Content ID and similar claiming systems.
+- [ ] I ran the item check. If audio is attached separately, its SHA-256 and size are in item.json.
+
+<!-- Maintainers: review the actual bytes and rights, then record the approved fingerprint. -->
