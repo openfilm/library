@@ -6,7 +6,7 @@ The GitHub repository holds submissions and approval records. The production R2 
 
 1. Check the source, CC0 eligibility, Content ID declaration, item quality and attribution. For an external attachment, extract the audio alone, compare `node scripts/prepare.mjs <file>` with `item.json`, and copy the audio to a private local staging directory as `<sha256>` with no extension. Keep any private evidence off GitHub.
 2. Run `node scripts/check.mjs --media-dir <staging-dir> <category>/<slug>`. Add the resulting fingerprint and a public, non-sensitive description of the provenance evidence to `approvals.json`. Reviewers own that file. Changed bytes or metadata invalidate the previous approval.
-3. Run `node scripts/check.mjs --approved --media-dir <staging-dir>` and preview the result. Keep staged blobs needed by the current catalog in the staging directory for future releases. Original review requires a maintainer and passing CI.
+3. Run `node scripts/check.mjs --approved --media-dir <staging-dir>` and preview the result. Stage newly approved files locally. Once published, subsequent releases can reuse the verified bytes already in the same R2 channel. Original review requires a maintainer and passing CI.
 
 ## Release
 
@@ -23,7 +23,7 @@ node scripts/publish.mjs publish production /path/to/staging
 node scripts/publish.mjs status production
 ```
 
-Omit the staging path when every source file is in Git. The publisher generates a restricted overlay page, waveform and catalog, uploads content-addressed blobs and an immutable catalog snapshot, reads them back, then switches the active catalog with an R2 ETag condition. Preview and production have separate prefixes. Verify in Studio by searching, previewing and importing both an overlay and a sound.
+Omit the staging path when every source file is in Git or already published to the target channel. The publisher generates a restricted overlay page, waveform and catalog, uploads content-addressed blobs and an immutable catalog snapshot, reads them back, then switches the active catalog with an R2 ETag condition. Preview and production have separate prefixes. Verify in Studio by searching, previewing and importing both an overlay and a sound.
 
 ## Withdraw and roll back
 

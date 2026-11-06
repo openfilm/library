@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { spawnSync, execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ROOT, hash, HEX, MB } from './check.mjs';
+import { ROOT, hash, HEX, idsIn, inspect, MB } from './check.mjs';
 import { build, commit, revokedAt } from './build.mjs';
 
 const [command, channel, value, ...extra] = process.argv.slice(2);
@@ -73,6 +73,34 @@ function verifySnapshot(catalog) {
   }
 }
 
+function buildFromSources(mediaDir) {
+  const needed = new Map();
+  for (const id of idsIn()) {
+    const { item } = inspect(id, { allowMissing: true });
+    for (const file of item.files) if (file.sha256) needed.set(file.sha256, file.bytes);
+  }
+  if (!needed.size) return build({ source: commit() });
+  const staging = mkdtempSync(join(tmpdir(), 'openfilm-publish-sources-'));
+  try {
+    for (const [digest, size] of needed) {
+      const local = mediaDir ? join(mediaDir, digest) : null;
+      let bytes;
+      if (local && existsSync(local)) {
+        const info = lstatSync(local);
+        if (!info.isFile() || info.size !== size) throw new Error(`Invalid staged file ${digest}`);
+        bytes = readFileSync(local);
+      } else {
+        const existing = request('GET', `blobs/${digest}`);
+        if (existing.status !== 200) throw new Error(`Stage the reviewed source ${digest} first`);
+        bytes = existing.bytes;
+      }
+      if (bytes.length !== size || hash(bytes) !== digest) throw new Error(`Source did not match its SHA-256: ${digest}`);
+      writeFileSync(join(staging, digest), bytes, { mode: 0o600, flag: 'wx' });
+    }
+    return build({ source: commit(), mediaDir: staging });
+  } finally { rmSync(staging, { recursive: true, force: true }); }
+}
+
 function verifyMain() {
   if (git('status', '--porcelain')) throw new Error('Publish from a clean checkout');
   if (channel === 'production') {
@@ -96,7 +124,7 @@ try {
   } else {
     verifyMain();
     if (command === 'publish') {
-      const { catalog, blobs, release } = build({ source: commit(), mediaDir: value });
+      const { catalog, blobs, release } = buildFromSources(value);
       const prior = new Map(old.items.map((entry) => [entry.id, entry]));
       for (const item of JSON.parse(catalog).items) {
         const before = prior.get(item.id);
