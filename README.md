@@ -4,7 +4,9 @@ Original and independently verified CC0 assets for [OpenFilm](https://github.com
 
 ## Use a community asset
 
-In a supported version of OpenFilm Studio, open the library and choose **Community** under Sounds, Music, Transitions or Effects. Search by its name or tags, preview it and add it to your film. `openfilm get sfx-search`, `music-search`, `transition` and `effect` also find these items. Studio downloads published files from OpenFilm's R2 storage as they are needed and verifies their checksums.
+The Community group is available when running the OpenFilm desktop app from the [main branch](https://github.com/openfilm/openfilm#from-source) with `pnpm dev:desktop`. OpenFilm 0.3.0 predates Community support.
+
+In Studio, open the library and choose **Community** under Sounds, Music, Transitions or Effects. Search by its name or tags, preview it and add it to your film. `openfilm get sfx-search`, `music-search`, `transition` and `effect` also find these items. Studio downloads published files from OpenFilm's R2 storage as they are needed and verifies their checksums.
 
 Each item's `item.json` identifies its contributor and source. Community submissions in this repository use [CC0 1.0](LICENSE). The built-in assets in the OpenFilm application have their own inventory and notices.
 
