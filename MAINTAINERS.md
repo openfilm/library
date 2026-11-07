@@ -16,14 +16,14 @@ Set `R2_ENDPOINT` to the account's HTTPS S3 endpoint and supply the `openfilm-as
 node scripts/build.mjs /tmp/openfilm-library-preview /path/to/staging
 node scripts/publish.mjs publish preview /path/to/staging
 node scripts/publish.mjs status preview
-# Point a test Studio at the preview catalog.
+# Point a Community-enabled Studio at the preview catalog.
 OPENFILM_COMMUNITY_LIBRARY_URL=https://openfilm.dev/library/community-preview/v1 openfilm open
 # Publish from a clean checkout of the approved origin/main.
 node scripts/publish.mjs publish production /path/to/staging
 node scripts/publish.mjs status production
 ```
 
-Omit the staging path when every source file is in Git or already published to the target channel. The publisher generates a restricted overlay page, waveform and catalog, uploads content-addressed blobs and an immutable catalog snapshot, reads them back, then switches the active catalog with an R2 ETag condition. Preview and production have separate prefixes. Verify in Studio by searching, previewing and importing both an overlay and a sound.
+Omit the staging path when every source file is in Git or already published to the target channel. The publisher generates a restricted overlay page, waveform and catalog, uploads content-addressed blobs and an immutable catalog snapshot, reads them back, then switches the active catalog with an R2 ETag condition. Preview and production have separate prefixes. Use the desktop app or CLI from the [OpenFilm main checkout](https://github.com/openfilm/openfilm#from-source) for Community testing. Verify in Studio by searching, previewing and importing both an overlay and a sound.
 
 ## Withdraw and roll back
 
